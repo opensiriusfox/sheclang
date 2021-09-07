@@ -1,0 +1,61 @@
+#!/bin/bash
+# sheclang - shebang (#!) meets automatic clang.
+# Luke Renaud
+# 2021-09-06 (Public Domain)
+# _____________________________________________________________________________
+# I got tired of the turnaround time when debugging my code, and I don't want
+# to make a full build system or frankly even maintain a ./build.sh script for
+# each project. I'm well on the road to re-inventing another build system, but
+# if we can make python a simple ./<my code>.py, why can't we do the same for
+# C and C++?
+#
+# See hello-world.cpp for the source code. Install this guy wherever your bins
+# are stored, try it, weep, then rejoice that you have one less buffer open.
+#
+# _____________________________________________________________________________
+# LICENSE:
+#	Public Domain (y'all really care?)
+
+set -e
+export IFS=$'\n'
+
+## Phase 1: Input Collection & Argument Checking
+if [[ $# -lt 1 ]]; then
+	printf "sheclang requires exactly one build file arugment.\n" >&2
+	exit
+fi
+
+file_input="$1"
+target_dir="$(dirname "${file_input}")"
+
+# TODO: Validate the extension of the output file before fucking with it.
+file_input_name="$(basename "${file_input}")"
+file_output="${file_input_name%.*}"
+file_extension="${file_input_name##*.}"
+if [[ "$file_input_name" == "$file_output" ]]; then
+	(
+		printf "ERROR! Input and output file names match.\n"
+		printf "    file input: %s\n" "$file_input_name"
+		printf "   file output: %s\n" "$file_output"
+	) >&2
+	exit;
+fi
+
+## Phase 2: File cleanup
+# Build the copy the main source file without a hashbang line
+file_input_corrected="${target_dir}/.sheclang.${file_output}.${file_extension}"
+cp "${file_input}" "${file_input_corrected}"
+
+printf "//" | dd conv=notrunc of="${file_input_corrected}" \
+	count=2 bs=1 status=none
+
+file_output="${target_dir}/${file_output}"
+
+## Phase 3: Build the file, and execute it with the remaining arguments.
+shift # remove the source file from the BASH argument tree.
+
+# Runn my prefered build script. Customize to your tastes
+clang++ -o "$file_output" "$file_input_corrected"
+
+# And execute with the remaining arguments
+"$file_output" $*
