@@ -17,13 +17,32 @@
 #	Public Domain (y'all really care?)
 
 set -e
-export IFS=$'\n'
+#O_IFS=${IFS}
+#export IFS=$'\n'
+
+COMPILER="clang++"
+BUILD_FLAGS=()
 
 ## Phase 1: Input Collection & Argument Checking
 if [[ $# -lt 1 ]]; then
 	printf "sheclang requires exactly one build file arugment.\n" >&2
 	exit
 fi
+
+# Load a global configuartion for a user
+if [[ -e $HOME/.config/sheclang/config ]]; then
+	source $HOME/.config/sheclang/config
+elif [[ -e $HOME/.sheclang ]]; then
+	source $HOME/.sheclang
+fi
+
+# Load a project specific config
+if [[ -e $PWD/sheclang.conf ]]; then
+	source $PWD/sheclang.conf
+elif [[ -e $PWD/.sheclang ]]; then
+	source $PWD/.sheclang
+fi
+#echo ${BUILD_FLAGS[@]}
 
 file_input="$1"
 target_dir="$(dirname "${file_input}")"
@@ -55,7 +74,8 @@ file_output="${target_dir}/${file_output}"
 shift # remove the source file from the BASH argument tree.
 
 # Runn my prefered build script. Customize to your tastes
-clang++ -o "$file_output" "$file_input_corrected"
+#$COMPILER ${BUILD_FLAGS[@]} -o "$file_output" "$file_input_corrected"
+$COMPILER -o "$file_output" "$file_input_corrected" ${BUILD_FLAGS[@]}
 
 # And execute with the remaining arguments
 "$file_output" $*
