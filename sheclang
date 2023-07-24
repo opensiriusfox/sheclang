@@ -1,6 +1,5 @@
 #!/bin/bash
 # sheclang - shebang (#!) meets automatic clang.
-# Luke Renaud
 # 2021-09-06 (Public Domain)
 # _____________________________________________________________________________
 # I got tired of the turnaround time when debugging my code, and I don't want
@@ -13,21 +12,62 @@
 # are stored, try it, weep, then rejoice that you have one less buffer open.
 #
 # _____________________________________________________________________________
+# Version History:
+#  2023-07-24 - Updated to accept !# arguments seperated by --
+#  2021-09-06 - Initial Release
+# _____________________________________________________________________________
 # LICENSE:
-#	Public Domain (y'all really care?)
+#	Public Domain
+
+function __sheclang_version() {
+SHECLANG_VERSION="2023-07-24"
+SV_LEN___="$SHECLANG_VERSION"
+printf ""
+printf "\e[4msheclang\e[0m: a she-bang (#!) for your C/C++ files.\n"
+printf "\e[4mversion\e[0m:  $SV_LEN___\n"
+tput sgr0
+}
+function __sheclang_usage() {
+SHECLANG_VERSION="2023-07-24"
+cat << EOF
+usage:
+    1. add "#!/usr/bin/env shebang" to your main C/C++ file,
+    2. mark the file as executable
+    3. try to execute it.
+    4. Profit.
+
+For advanced usage information, see the project README file.
+EOF
+}
 
 set -e
 #O_IFS=${IFS}
-#export IFS=$'\n'
+export IFS=$'\n'
 
 COMPILER="clang++"
-BUILD_FLAGS=()
+SHECLANG_VERBOSE=${SHECLANG_VERBOSE:-false}
 
+###################
 ## Phase 1: Input Collection & Argument Checking
 if [[ $# -lt 1 ]]; then
-	printf "sheclang requires exactly one build file arugment.\n" >&2
+	printf "sheclang requires at least the build file arugment.\n" >&2
+	__sheclang_usage
 	exit
 fi
+case "$1" in
+	-v|-V|--version)
+		__sheclang_version
+		exit
+		;;
+	--help|-h)
+		__sheclang_version
+		__sheclang_usage
+		exit
+		;;
+	*)
+		;;
+esac
+
 
 # Load a global configuartion for a user
 if [[ -e $HOME/.config/sheclang/config ]]; then
@@ -42,9 +82,47 @@ if [[ -e $PWD/sheclang.conf ]]; then
 elif [[ -e $PWD/.sheclang ]]; then
 	source $PWD/.sheclang
 fi
-#echo ${BUILD_FLAGS[@]}
 
-file_input="$1"
+# Collect arguments from command line
+# First check to see if we have a -- indicating a split between arguments for clang and arguments for the tool itself
+CLI_CC_ARGS=()
+CLI_BIN_ARGS=()
+FOUND_SPLIT=false
+for ARG in $@; do
+	if [[ "$ARG" == "--" ]]; then
+		FOUND_SPLIT=true
+		continue
+	fi
+
+	if [[ "$FOUND_SPLIT" == "true" ]]; then
+		CLI_BIN_ARGS+=("$ARG")
+	else
+		CLI_CC_ARGS+=("$ARG")
+	fi
+done
+
+# If we never found the -- seperator, then all of the arguments are assumed to have been
+# input arguments
+if [[ "$FOUND_SPLIT" == "false" ]]; then
+	CLI_BIN_ARGS+=(${CLI_CC_ARGS[@]})
+	unset CLI_CC_ARGS
+fi
+
+# Next, remove the source code file as the root executable
+file_input="${CLI_BIN_ARGS[0]}"
+# and validate that the file is indeed a source code file, with a sane extension
+if [[ ! -f "$file_input" ]]; then
+	printf "ERROR: provided input file could not be found.\n"
+	printf " INFO: sheclang effective invocation:\n       "
+	printf "%s " $0 ${CLI_CC_ARGS[@]} -- "${CLI_BIN_ARGS[@]}"
+	printf "\n"
+	exit 1
+elif [[ "$SHECLANG_VERBOSE" == true ]]; then
+	printf " INFO: sheclang effective invocation:\n       "
+	printf "%s " $0 ${CLI_CC_ARGS[@]} -- "${CLI_BIN_ARGS[@]}"
+	printf "\n"
+fi
+
 target_dir="$(dirname "${file_input}")"
 
 # TODO: Validate the extension of the output file before fucking with it.
@@ -60,22 +138,41 @@ if [[ "$file_input_name" == "$file_output" ]]; then
 	exit;
 fi
 
+###################
 ## Phase 2: File cleanup
 # Build the copy the main source file without a hashbang line
 file_input_corrected="${target_dir}/.sheclang.${file_output}.${file_extension}"
 cp "${file_input}" "${file_input_corrected}"
 
+# Convert the shebang into a comment line so the compiler doesn't see it
 printf "//" | dd conv=notrunc of="${file_input_corrected}" \
 	count=2 bs=1 status=none
 
 file_output="${target_dir}/${file_output}"
 
+###################
 ## Phase 3: Build the file, and execute it with the remaining arguments.
-shift # remove the source file from the BASH argument tree.
+unset 'CLI_BIN_ARGS[0]' # remove the source file from the BASH argument tree.
 
-# Runn my prefered build script. Customize to your tastes
-#$COMPILER ${BUILD_FLAGS[@]} -o "$file_output" "$file_input_corrected"
-$COMPILER -o "$file_output" "$file_input_corrected" ${BUILD_FLAGS[@]}
+
+# Finally, merge the CLI build arguments with the pre-defined arguments
+PRE_BUILD_FLAGS+=(${CLI_CC_ARGS[@]})
+#POST_BUILD_FLAGS are defined in scripts only
+RUNTIME_ARGS+=(${CLI_BIN_ARGS[@]})
+
+# Run my prefered build script. Customize to your tastes
+#$COMPILER ${PRE_BUILD_FLAGS[@]} -o "$file_output" "$file_input_corrected"
+if [[ "$SHECLANG_VERBOSE" == true ]]; then
+	printf " INFO: sheclang effective compiler invocation:\n       "
+	printf "%s " $COMPILER ${PRE_BUILD_FLAGS[@]} -o "$file_output" "$file_input_corrected" ${POST_BUILD_FLAGS[@]}
+	printf "\n"
+fi
+$COMPILER ${PRE_BUILD_FLAGS[@]} -o "$file_output" "$file_input_corrected" ${POST_BUILD_FLAGS[@]}
 
 # And execute with the remaining arguments
-"$file_output" $*
+if [[ "$SHECLANG_VERBOSE" == true ]]; then
+	printf " INFO: sheclang effective binary invocation:\n       "
+	printf "%s " "$file_output" ${RUNTIME_ARGS[@]}
+	printf "\n"
+fi
+"$file_output" ${RUNTIME_ARGS[@]}

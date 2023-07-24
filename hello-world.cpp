@@ -1,4 +1,4 @@
-#!/usr/bin/env sheclang
+#!/usr/bin/env -S sheclang
 #include <stdio.h>
 
 int main(int argc, char  *argv[]) {
