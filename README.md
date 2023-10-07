@@ -2,7 +2,7 @@
 ## Installation & Test
 To install, just stick the bash script in your path either by a copy or a symlink.
 ```
-git clone https://github.com/lrenaud/sheclang
+git clone https://github.com/opensiriusfox/sheclang
 cd sheclang
 sudo cp -v sheclang /usr/bin/
 ```
